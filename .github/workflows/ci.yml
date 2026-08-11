@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  syntax-check:
+    name: 语法检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci --ignore-scripts
+
+      - name: 服务端语法检查
+        run: |
+          node --check server.js
+          node --check lxmusic-api.js
+          node --check kugou-api.js
+          node --check qishui-api.js
+          node --check desktop/main.js
+
+      - name: 前端模块语法检查
+        run: |
+          for f in $(find public/js -name '*.js'); do node --check "$f" || exit 1; done
+
+  lxmusic-smoke:
+    name: 落雪音源冒烟测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci --ignore-scripts
+
+      - name: 运行冒烟测试
+        run: node scripts/smoke-lxmusic.js
