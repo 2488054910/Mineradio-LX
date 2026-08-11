@@ -7,12 +7,12 @@
 Windows 桌面沉浸式音乐播放器，融合天气电台、歌词舞台、粒子视觉、3D 歌单架与多平台音源。
 本仓库为 [XxHuberrr/Mineradio](https://github.com/XxHuberrr/Mineradio) v2.1.0 的二次开发版本，遵循 **GPL-3.0** 协议。
 
-[![GitHub release](https://img.shields.io/badge/最新版本-v2.1.1-blue)](https://github.com/2488054910/Mineradio-LX/releases/latest)
+[![GitHub release](https://img.shields.io/badge/最新版本-v2.1.2-blue)](https://github.com/2488054910/Mineradio-LX/releases/latest)
 [![GitHub stars](https://img.shields.io/github/stars/2488054910/Mineradio-LX?style=social)](https://github.com/2488054910/Mineradio-LX/stargazers)
 [![License](https://img.shields.io/badge/license-GPL--3.0-green.svg)](./LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-blueviolet)]()
 
-**最新版本：v2.1.1** · [⬇️ 下载安装包](https://github.com/2488054910/Mineradio-LX/releases/latest) · [📖 使用文档](#-快速开始)
+**最新版本：v2.1.2** · [⬇️ 下载安装包](https://github.com/2488054910/Mineradio-LX/releases/latest) · [📖 使用文档](#-快速开始)
 
 </div>
 
@@ -39,13 +39,39 @@ Windows 桌面沉浸式音乐播放器，融合天气电台、歌词舞台、粒
 - **内置霞鹜文楷歌词字体**：3 字重（Light / Regular / Medium），文艺质感
 - **独立更新通道**：软件内更新检测指向本仓库，与原版互不干扰
 
+## ✅ 完整保留原版全部功能
+
+本二创**仅做加法，不做减法**——原版 v2.1.0 的每一项功能都完整保留，一项不少：
+
+- 天气电台、每日推荐、私人电台、继续听、听歌画像、我的歌单
+- 粒子视觉（emily / 安魂 / 星河 / 唱片 / 星球 / 滚筒 / 虚空 / 泡沫 / 不规则 / 棋盘，10 种预设）
+- 基于节奏的电影镜头系统（zoom / pan / dolly）
+- 歌词舞台、自定义歌词、桌面歌词、壁纸模式
+- 3D 歌单架、手势控制（摄像头隔空操作）、用户存档
+- 网易云 / QQ 音乐登录、双平台搜索与播客
+- 本地 MP4 与 Wallpaper Engine 壁纸支持
+
+---
+
+## 📸 界面截图
+
+### 自定义源管理
+
+点击播放器内的 **「自定义源管理」** 按钮，即可进入自定义音源管理界面，自由配置落雪兼容音源：
+
+| 自定义源管理界面 | 自定义源管理入口 |
+|:---:|:---:|
+| ![自定义源管理](docs/screenshots/custom-source-management.png) | ![自定义源管理入口](docs/screenshots/custom-source-entry.png) |
+
+> 支持添加 / 编辑 / 启停多个音源后端，并为每个音源单独设置音质档位与超时时间。
+
 ---
 
 ## 🚀 快速开始
 
 ### 方式一：安装包（推荐）
 
-从 [Releases 页面](https://github.com/2488054910/Mineradio-LX/releases/latest) 下载 `Mineradio-2.1.1-Setup.exe`，运行安装即可。
+从 [Releases 页面](https://github.com/2488054910/Mineradio-LX/releases/latest) 下载 `Mineradio-2.1.2-Setup.exe`，运行安装即可。
 
 - 支持覆盖安装原版或旧版二创
 - 用户数据（歌单、设置、用户存档）保存在 `%APPDATA%\Mineradio`，**升级不丢失**
