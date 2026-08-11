@@ -4,6 +4,18 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.1.2] - 2026-08-11
+
+### 修复
+
+- **修复 v2.1.1 安装包启动崩溃**：打包白名单（`build.files`）缺少 `lxmusic-debug-log.js` 和 `data/` 配置目录，导致 `server.js` 加载模块失败、程序无法启动
+- 补充打包配置：`data/**/*`（默认音源配置）、`lxmusic-debug-log.js` 加入打包白名单
+- 仓库源码同步完整构建配置（`scripts` / `build` / `devDependencies`），clone 后可正常 `npm run build:win`
+
+### 变更
+
+- 版本号 2.1.1 → 2.1.2（修复发布，v2.1.1 安装包已标记废弃）
+
 ## [2.1.1] - 2026-08-11
 
 ### 🎉 首个二创发布
