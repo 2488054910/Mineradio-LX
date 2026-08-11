@@ -1,0 +1,84 @@
+{
+  "enabled": true,
+  "backends": [
+    {
+      "id": "xinghai",
+      "name": "星海音源",
+      "baseUrl": "https://yy.zddyr.top",
+      "style": "xinghai",
+      "keyHeader": "",
+      "key": "",
+      "timeoutMs": 10000,
+      "qualitys": [
+        "128k",
+        "320k",
+        "flac",
+        "flac24bit"
+      ]
+    },
+    {
+      "id": "chksz",
+      "name": "ChKSz 音源",
+      "baseUrl": "https://api.chksz.top",
+      "style": "chksz",
+      "keyHeader": "",
+      "key": "",
+      "timeoutMs": 10000,
+      "qualitys": [
+        "128k",
+        "320k",
+        "flac",
+        "flac24bit"
+      ]
+    },
+    {
+      "id": "ikun",
+      "name": "ikun",
+      "baseUrl": "https://api.ikunshare.com",
+      "style": "query",
+      "keyHeader": "X-Request-Key",
+      "key": "public_source",
+      "timeoutMs": 8000,
+      "qualitys": [
+        "128k",
+        "320k"
+      ],
+      "enabled": false
+    },
+    {
+      "id": "huibq",
+      "name": "huibq",
+      "baseUrl": "https://lxmusicapi.onrender.com",
+      "style": "path",
+      "keyHeader": "X-Request-Key",
+      "key": "share-v3",
+      "timeoutMs": 8000,
+      "qualitys": [
+        "128k",
+        "320k"
+      ],
+      "enabled": false
+    },
+    {
+      "id": "yehua",
+      "style": "path",
+      "key": "",
+      "enabled": false,
+      "timeoutMs": 8000,
+      "name": "野花音源",
+      "baseUrl": "http://97.64.37.235",
+      "qualitys": [
+        "128k"
+      ],
+      "keyHeader": ""
+    }
+  ],
+  "qualityMap": {
+    "standard": "128k",
+    "exhigh": "320k",
+    "lossless": "flac",
+    "hires": "flac24bit",
+    "jymaster": "flac24bit"
+  },
+  "selectedBackend": "xinghai"
+}

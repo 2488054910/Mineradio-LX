@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+win-unpacked/
+*.exe
+*.dll
+*.pak
+*.bin
+*.dat
+
+# Update / backup areas
+updates/
+backups/
+.backup-original/
+
+# Runtime data & local state
+*.log
+lxmusic-debug.log
+.cookie
+.qq-cookie
+.session
+
+# OS / editor
+Thumbs.db
+Desktop.ini
+.DS_Store
+.idea/
+.vscode/
