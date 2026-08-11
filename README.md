@@ -61,7 +61,7 @@ Windows 桌面沉浸式音乐播放器，融合天气电台、歌词舞台、粒
 
 | 自定义源管理入口 | 自定义源管理界面 |
 |:---:|:---:|
-| ![自定义源管理入口](docs/screenshots/custom-source-entry.png) | ![自定义源管理](docs/screenshots/custom-source-management.png) |
+| ![自定义源管理入口](docs/screenshots/custom-source-management.png) | ![自定义源管理](docs/screenshots/custom-source-entry.png) |
 
 > 支持添加 / 编辑 / 启停多个音源后端，并为每个音源单独设置音质档位与超时时间。
 
