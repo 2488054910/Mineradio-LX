@@ -5400,6 +5400,45 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
+      // 网易云 VIP/受限歌曲：直接解析失败时，用稳定的老版 QQ 搜索接口
+      // 找同名歌曲 songmid，再走支持 QQ 源的免费后端（如星海）。
+      if (!result || result.playable !== true) {
+        var qqQuery = [name, artist].filter(Boolean).join(' ').trim();
+        if (qqQuery && (provider === 'netease' || provider === 'qq' || provider === 'kugou')) {
+          try {
+            var qqSearchResp = await fetch('https://c.y.qq.com/soso/fcgi-bin/client_search_cp?w=' + encodeURIComponent(qqQuery) + '&p=1&n=12&format=json', {
+              headers: { 'Referer': 'https://y.qq.com/', 'User-Agent': 'Mozilla/5.0' },
+            });
+            var qqSearchJson = await qqSearchResp.json();
+            var qqCrossList = qqSearchJson && qqSearchJson.data && qqSearchJson.data.song && qqSearchJson.data.song.list || [];
+            var qqCrossName = String(name || '').toLowerCase();
+            var qqCrossArtist = String(artist || '').toLowerCase();
+            logLxMusic('RESOLVE', 'QQ 老接口搜索', { count: qqCrossList.length, query: qqQuery });
+            for (var qci = 0; qci < qqCrossList.length; qci++) {
+              var qci2 = qqCrossList[qci];
+              var qcName = String(qci2 && (qci2.songname || qci2.name) || '').toLowerCase();
+              var qcSinger = String(qci2 && qci2.singer && qci2.singer[0] && qci2.singer[0].name || '').toLowerCase();
+              var qcDur = Number(qci2 && qci2.interval) || 0;
+              var nameHit = qcName === qqCrossName;
+              var artistHit = !qqCrossArtist || !qcSinger || qcSinger.indexOf(qqCrossArtist) >= 0 || qqCrossArtist.indexOf(qcSinger) >= 0;
+              if (nameHit && artistHit && (!duration || !qcDur || Math.abs(qcDur - duration) < 8000)) {
+                var qcId = qci2 && (qci2.songmid || qci2.mid || '');
+                if (qcId) {
+                  logLxMusic('RESOLVE', 'QQ 搜索匹配成功', { qcId, qcName: qci2 && qci2.songname });
+                  result = await lxmusicApi.resolveLxMusicUrl({
+                    source: 'tx', songId: qcId, quality: quality,
+                    name: name, artist: artist, duration: duration, songmid: qcId,
+                  }, { bypassCooldown: true });
+                  if (result && result.playable === true) break;
+                }
+              }
+            }
+          } catch (qqCrossErr) {
+            logLxMusic('ERROR', 'QQ 老接口搜索失败', { error: qqCrossErr && qqCrossErr.message });
+          }
+        }
+      }
+
       if (!result) {
         logLxMusic('RESOLVE', '最终失败：未找到可播放链接', { name, artist });
         sendJSON(res, { provider: 'lxmusic', playable: false, reason: 'not_found' });

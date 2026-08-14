@@ -501,11 +501,12 @@ function _buildBackendUrl(backend, source, songId, quality, extraParams) {
   }
   if (backend.style === 'xinghai') {
     // 星海后端 API: /lx/api/?source=qq&name=晴天&singer=周杰伦&songmid=0039MnYb0qxYhV&quality=320k
+    // 实测星海支持 qq/kg/kw/migu/kuwo/netease 源；网易云必须用 source=netease（不是 wy）
     var x = extraParams || {};
-    // Map lx source to xinghai source: tx->qq, kg->kg, kw->kw, mg->migu
-    // 星海不支持wy(网易云)，网易云歌曲应跳过星海走其他后端
+    // Map lx source to xinghai source: tx->qq, wy->netease, kg->kg, kw->kw, mg->migu
     var xSource = source;
     if (source === 'tx') xSource = 'qq';
+    else if (source === 'wy') xSource = 'netease';
     else if (source === 'mg') xSource = 'migu';
     var url = base + '/lx/api/?source=' + encodeURIComponent(xSource);
     url += '&name=' + encodeURIComponent(x.name || '');
@@ -643,7 +644,7 @@ async function resolveLxMusicUrl(params, opts) {
 
     // --- Throttle check ---
     var throttle = _checkThrottle(backendId);
-    if (throttle.throttled) {
+    if (throttle.throttled && !(opts && opts.bypassCooldown)) {
       errors.push({ backend: backendId, error: 'throttled:' + throttle.reason, code: 'THROTTLED' });
       continue;
     }
