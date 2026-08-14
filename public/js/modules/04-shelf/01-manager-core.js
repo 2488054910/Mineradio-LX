@@ -27,6 +27,7 @@ function makeShelfManager() {
   var centerIdx = 0;          // 当前居中卡片 index (在 items 数组中的位置)
   var centerTarget = 0;       // 目标 centerIdx (插值)
   var centerSmooth = 0;       // 当前实际 centerIdx 平滑值
+  var shelfVisibilityPrev = 0; // 上一帧歌单架可见度（用于检测探出转变）
   var openCardIdx = -1;       // 已打开内容框的卡片 (-1 表示无)
   var contentList = null;     // 二级 PSP 滚动列表 manager
   var connectorParticles = null;
@@ -783,6 +784,16 @@ void main(){ vec4 t = texture2D(uDotTex, gl_PointCoord); if (t.a < 0.02) discard
         : Math.max(0.05, summonVis.closeDuration * 0.65);
       shelfVisibility += (targetVis - shelfVisibility) * durationEaseFactor(visDuration, dt);
       if (shelfVisibility < 0.01 && targetVis === 0) shelfVisibility = 0;
+      // 探出聚焦：歌单架从隐藏→探出（hover 触发，非固定打开）时，自动回滚到当前播放歌曲。
+      // 覆盖"鼠标触发→滚轮滚动→返回听歌界面→再次触发"的场景。
+      if (mode === 'side' && !shelfPinnedOpen && !(contentList && contentList.isOpen())
+        && !shelfSuppressFocusOnOpen
+        && shelfVisibility > 0.30 && shelfVisibilityPrev <= 0.15) {
+        if (typeof shelfManager !== 'undefined' && shelfManager && typeof shelfManager.focusCurrent === 'function') {
+          shelfManager.focusCurrent({ force: true });
+        }
+      }
+      shelfVisibilityPrev = shelfVisibility;
       group.visible = appRevealed && (mode !== 'side' || shelfVisibility > 0) && (allItems.length > 0 || (contentList && contentList.isOpen()));
       if (connectorParticles) connectorParticles.visible = group.visible && mode === 'stage';
       if (mode === 'side') {
@@ -851,6 +862,22 @@ void main(){ vec4 t = texture2D(uDotTex, gl_PointCoord); if (t.a < 0.02) discard
       }
     },
     rebuild: rebuild,
+    // 聚焦当前播放歌曲：把卡片视角 center 移到 currentIdx（队列卡片）
+    // opts.force=true 时忽略用户已滚动位置，强制跳转；opts.select=true 时同时高亮选中
+    focusCurrent: function (opts) {
+      opts = opts || {};
+      if (!allItems.length) return false;
+      // 只有队列卡片才与播放位置一一对应
+      if (allItems[0].type !== 'queue' || currentIdx < 0 || currentIdx >= allItems.length) return false;
+      var target = Math.min(allItems.length - 1, currentIdx);
+      var alreadyThere = Math.abs(centerSmooth - target) < 0.5;
+      if (alreadyThere && !opts.force) return false;
+      centerTarget = target;
+      centerSmooth = target;
+      centerIdx = target;
+      if (opts.select) applySelectedIndex(target);
+      return true;
+    },
     refreshTheme: function () {
       cards.forEach(function (c) {
         c.drawKey = '';

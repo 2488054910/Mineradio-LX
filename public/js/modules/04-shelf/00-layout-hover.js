@@ -2,6 +2,7 @@
 var shelfPinnedOpen = false;
 var shelfManager = null;
 var shelfOpenAnimAt = -10;
+var shelfSuppressFocusOnOpen = false;  // 用户点击具体卡片打开歌单架时置 true，跳过聚焦当前歌曲
 var shelfHoverCue = { target: 0, value: 0, x: 0, y: 0, lastAt: 0, enteredAt: 0, zoneActive: false, guide: false };
 var shelfVisibility = 0;  // 0..1, 侧栏自动隐藏的整体透明度系数
 var shelfPlaybackSwitchGuardUntil = 0;
@@ -75,21 +76,16 @@ function shelfPreviewUseZoneWidth() {
   // 参照左侧歌单面板的预览区域宽度
   return 200;
 }
-function shelfWheelZoneWidth() {
-  // 参照左侧歌单面板的滚轮区域宽度
-  return 150;
-}
 function isShelfClickZone(e) {
   var edge = shelfPinnedOpen ? Math.min(390, Math.max(210, innerWidth * 0.22)) : shelfHotZoneWidth();
-  return e.clientX > innerWidth - edge && e.clientY > 130 && e.clientY < innerHeight - 150;
+  // 触发条件收紧：靠近右边缘 + 位于屏幕右侧中间三分之一区域（垂直方向）
+  var thirdTop = innerHeight * 0.333;
+  var thirdBottom = innerHeight * 0.667;
+  return e.clientX > innerWidth - edge && e.clientY > thirdTop && e.clientY < thirdBottom;
 }
 function isShelfPreviewUseZone(e) {
   var edge = shelfPreviewUseZoneWidth();
   return e.clientX > innerWidth - edge && e.clientY > 96 && e.clientY < innerHeight - 96;
-}
-function isShelfWheelZone(e) {
-  var edge = shelfWheelZoneWidth();
-  return e.clientX > innerWidth - edge && e.clientY > 116 && e.clientY < innerHeight - 116;
 }
 function canUseSideShelfWithoutPinnedOpen() {
   return !!shelfAlwaysVisible();
@@ -120,8 +116,9 @@ function canShowShelfHoverCueAt(e) {
 }
 function shelfCueRect() {
   var w = shelfHotZoneWidth();
-  var top = Math.max(136, innerHeight * 0.22);
-  var h = Math.min(390, innerHeight - top - 142);
+  // 与触发区一致：屏幕右侧中间三分之一区域
+  var top = Math.max(100, innerHeight * 0.333);
+  var h = Math.max(80, innerHeight * 0.334 - 8);
   return { left: innerWidth - w, top: top, width: w, height: h, right: innerWidth, bottom: top + h };
 }
 function shelfCueCenter() {
@@ -226,9 +223,14 @@ function setShelfPinnedOpen(open, immediate, persist) {
     shelfHoverCue.target = 0;
     shelfHoverCue.zoneActive = false;
     shelfHoverCue.enteredAt = 0;
+    // 歌单架从关闭→打开时，默认重新聚焦到当前播放歌曲（除非本次打开是用户点击了具体卡片）
+    if (!shelfSuppressFocusOnOpen && shelfManager && typeof shelfManager.focusCurrent === 'function') {
+      shelfManager.focusCurrent({ force: true });
+    }
   }
   shelfPinnedOpen = nextOpen;
   if (fx) fx.shelfPinnedOpen = nextOpen;
+  shelfSuppressFocusOnOpen = false;
   if (!nextOpen) {
     updateShelfHoverCueFromPointer(null);
     shelfHoverCue.target = 0;

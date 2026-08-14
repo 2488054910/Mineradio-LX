@@ -47,12 +47,8 @@ function updateShelfCardHoverSelection(e) {
     if (!shelfPinnedOpen && shelfAlwaysVisible()) {
       var alwaysHit = pointerCardHit(raycasterFromPointerEvent(e), e, 18);
       if (alwaysHit && alwaysHit.card) {
+        // 仅高亮选中，不随鼠标位置滚动歌单架（滚动只由滚轮控制）
         shelfManager.setSelected(alwaysHit.card.index);
-        // 聚焦鼠标选中的卡片，只有当卡片距离中心超过1.5时才滚动
-        var dist = alwaysHit.card.index - shelfManager.getCenterIdx();
-        if (Math.abs(dist) > 1.5) {
-          shelfManager.scrollBy(Math.sign(dist));
-        }
       } else {
         shelfManager.clearSelected();
       }
@@ -69,12 +65,8 @@ function updateShelfCardHoverSelection(e) {
   }
   var hit = pointerCardHit(raycasterFromPointerEvent(e), e);
   if (hit && hit.card) {
+    // 仅高亮选中，不随鼠标位置滚动歌单架（滚动只由滚轮控制）
     shelfManager.setSelected(hit.card.index);
-    // 聚焦鼠标选中的卡片，只有当卡片距离中心超过1.5时才滚动
-    var dist = hit.card.index - shelfManager.getCenterIdx();
-    if (Math.abs(dist) > 1.5) {
-      shelfManager.scrollBy(Math.sign(dist));
-    }
   } else {
     shelfManager.clearSelected();
   }
@@ -144,6 +136,8 @@ renderer.domElement.addEventListener('click', function (e) {
   if (mode === 'side' && !shelfPinnedOpen && !canUseSideShelfWithoutPinnedOpen() && shelfVisibility < 0.3) return;
 
   if (hit) {
+    // 用户点击了具体卡片：打开时不跳回当前播放歌曲
+    if (typeof shelfSuppressFocusOnOpen !== 'undefined') shelfSuppressFocusOnOpen = true;
     if (mode === 'side') setShelfPinnedOpen(true, true);
     var idx = hit.card.index;
     if (Math.abs(idx - shelfManager.getCenterIdx()) < 0.5) {
@@ -215,13 +209,13 @@ renderer.domElement.addEventListener('wheel', function (e) {
   var mode = shelfManager.getMode();
   var inShelfArea = false;
   var canScrollShelf = shelfManager.canInteract && shelfManager.canInteract();
-  var shelfPreviewActive = shelfAutoHiddenInputReady();
+  // 滚轮只应在鼠标真实悬停在歌单架卡片上时滚动；不再按右侧热区位置触发
   var cardWheelHit = canScrollShelf ? pointerCardHit(rc, e, mode === 'side' && !shelfPinnedOpen && shelfAlwaysVisible() ? 18 : undefined) : null;
-  if (canScrollShelf && e.shiftKey && (mode !== 'side' || shelfPinnedOpen || shelfPreviewActive || shelfAlwaysVisible())) inShelfArea = true;
+  if (canScrollShelf && e.shiftKey && (mode !== 'side' || shelfPinnedOpen || shelfAutoHiddenInputReady() || shelfAlwaysVisible())) inShelfArea = true;
   else if (canScrollShelf && mode === 'side') {
-    if (shelfPinnedOpen) inShelfArea = isShelfWheelZone(e) || !!cardWheelHit;
+    if (shelfPinnedOpen) inShelfArea = !!cardWheelHit;
     else if (shelfAlwaysVisible()) inShelfArea = !!cardWheelHit;
-    else if (shelfPreviewActive) inShelfArea = isShelfWheelZone(e) || !!cardWheelHit;
+    else inShelfArea = !!cardWheelHit;
   }
   else if (canScrollShelf && mode === 'stage' && cardWheelHit) inShelfArea = true;
   if (inShelfArea) {
