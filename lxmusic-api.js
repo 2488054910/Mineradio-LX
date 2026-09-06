@@ -119,6 +119,26 @@ const DEFAULT_CONFIG = {
   enabled: true,
   backends: [
     {
+      id: 'gdstudio',
+      name: 'GD Studio 音源',
+      baseUrl: 'https://music-api.gdstudio.xyz/api.php',
+      style: 'gdstudio',
+      keyHeader: '',
+      key: '',
+      timeoutMs: 10000,
+      qualitys: ['128k', '320k', 'flac', 'flac24bit'],
+    },
+    {
+      id: 'chksz',
+      name: 'ChKSz 音源',
+      baseUrl: 'https://api.chksz.com',
+      style: 'chksz',
+      keyHeader: '',
+      key: '',
+      timeoutMs: 10000,
+      qualitys: ['128k', '320k', 'flac', 'flac24bit'],
+    },
+    {
       id: 'xinghai',
       name: '星海音源',
       baseUrl: 'https://yy.zddyr.top',
@@ -283,7 +303,7 @@ function saveLxMusicConfig(input) {
   }
 
   const VALID_QUALITYS = new Set(QUALITY_ORDER);
-  const VALID_STYLES = new Set(['query', 'path', 'chksz', 'xinghai']);
+  const VALID_STYLES = new Set(['query', 'path', 'chksz', 'xinghai', 'gdstudio']);
 
   for (let i = 0; i < merged.backends.length; i++) {
     const b = merged.backends[i];
@@ -434,9 +454,14 @@ function _recordThrottle(backendId) {
  * If no declared quality is <= requested, use the lowest declared.
  */
 function _mapQuality(qualityKey, qualityMap, backendQualitys) {
-  const mapped = (qualityMap && qualityMap[qualityKey])
-    || (qualityMap && qualityMap['hires'])
-    || '128k';
+  // Raw backend-quality keys (e.g. the '128k' fallback pass) map to themselves;
+  // routing them through qualityMap used to turn '128k' into 'flac24bit'
+  // because qualityMap has no '128k' key and fell back to qualityMap['hires'].
+  const mapped = QUALITY_ORDER.indexOf(qualityKey) >= 0
+    ? qualityKey
+    : (qualityMap && qualityMap[qualityKey])
+      || (qualityMap && qualityMap['hires'])
+      || '128k';
 
   const mappedIdx = QUALITY_ORDER.indexOf(mapped);
   if (mappedIdx < 0) {
@@ -493,11 +518,16 @@ function _generateFlowerTag(urlPath) {
 function _buildBackendUrl(backend, source, songId, quality, extraParams) {
   var base = String(backend.baseUrl).replace(/\/+$/, '');
   if (backend.style === 'chksz') {
-    // ChKSz API: /api/163_music?id={songId}&level={quality}
-    var chkszQuality = quality;
-    if (quality === '128k' || quality === '320k') chkszQuality = '320k';
-    else if (quality === 'flac' || quality === 'flac24bit') chkszQuality = 'hires';
-    return base + '/api/163_music?id=' + encodeURIComponent(songId) + '&level=' + encodeURIComponent(chkszQuality);
+    // ChKSz API (moved to api.chksz.com in 2026, api.chksz.top is retired):
+    // per-platform endpoints, apikey query auth, netease-style level names.
+    //   netease: /api/163_music   qq: /api/qq_music   kugou: /api/kugou_music
+    var chkszEndpoints = { wy: '/api/163_music', tx: '/api/qq_music', kg: '/api/kugou_music' };
+    var chkszEndpoint = chkszEndpoints[source] || '/api/163_music';
+    var chkszLevels = { '128k': 'standard', '320k': 'exhigh', 'flac': 'lossless', 'flac24bit': 'hires' };
+    var chkszLevel = chkszLevels[quality] || 'lossless';
+    var chkszUrl = base + chkszEndpoint + '?id=' + encodeURIComponent(songId) + '&level=' + encodeURIComponent(chkszLevel);
+    if (backend.key) chkszUrl += '&apikey=' + encodeURIComponent(backend.key);
+    return chkszUrl;
   }
   if (backend.style === 'xinghai') {
     // 星海后端 API: /lx/api/?source=qq&name=晴天&singer=周杰伦&songmid=0039MnYb0qxYhV&quality=320k
@@ -517,6 +547,24 @@ function _buildBackendUrl(backend, source, songId, quality, extraParams) {
     url += '&quality=' + encodeURIComponent(quality);
     if (x.duration) url += '&interval=' + encodeURIComponent(x.duration);
     return url;
+  }
+  if (backend.style === 'gdstudio') {
+    // GD Studio API（洛雪生态最活跃公共后端）:
+    //   url:  {baseUrl}?types=url&source={netease|joox|bilibili}&id={id}&br={128|192|320|740|999}
+    //   search: {baseUrl}?types=search&source={source}&name={name}&count={n}
+    // 网易云 VIP 歌曲 netease 源返回空 URL；周杰伦等 VIP 曲目走 joox（QQ 海外版）可播
+    var g = extraParams || {};
+    var gSource = source;
+    // Map lx source to gdstudio source: wy->netease, tx->joox（大陆 tencent 源已下架）, kg->kuwo(不稳定), kw->kuwo
+    if (source === 'wy') gSource = 'netease';
+    else if (source === 'tx') gSource = 'joox';
+    else if (source === 'kg' || source === 'kw') gSource = 'kuwo';
+    else if (source === 'mg') gSource = 'migu';
+    // Map quality to br: 128k->128, 320k->320, flac->740, flac24bit->999
+    var brMap = { '128k': 128, '320k': 320, 'flac': 740, 'flac24bit': 999 };
+    var br = brMap[quality] || 320;
+    var gId = g.songmid || g.mid || g.hash || g.url_id || songId;
+    return base + '?types=url&source=' + encodeURIComponent(gSource) + '&id=' + encodeURIComponent(gId) + '&br=' + br;
   }
   if (backend.style === 'path') {
     return base + '/url/' + encodeURIComponent(source) + '/' + encodeURIComponent(songId) + '/' + encodeURIComponent(quality);
@@ -538,16 +586,18 @@ function _extractPath(url) {
 
 /**
  * Validate a resolved URL. Returns false when the URL is empty, not http/https,
- * longer than 2048 chars, or the response message indicates a failure
- * (e.g. "无法获取播放链接" placeholder).
+ * longer than 2048 chars, or looks like an error placeholder itself.
+ *
+ * Note: a failure-style `msg` ("无法获取播放链接！") does NOT invalidate a
+ * non-empty URL — some backends (e.g. huibq) return a real playable URL
+ * alongside boilerplate failure text, and the URL is authoritative.
  */
 function _validateUrl(url, msg) {
   if (typeof url !== 'string' || url.length === 0) return false;
   if (url.length > 2048) return false;
   if (!/^https?:\/\//i.test(url)) return false;
-
-  var msgStr = String(msg || '');
-  if (/无法获取播放链接|获取失败|获取音乐|failed|error/i.test(msgStr)) return false;
+  // Placeholder bodies where the error text ended up inside the url field
+  if (/无法获取播放链接|获取失败/.test(url)) return false;
 
   return true;
 }
@@ -720,8 +770,10 @@ async function resolveLxMusicUrl(params, opts) {
 
     // --- Check body.code ---
     var code = body && body.code;
-    // Codes that indicate backend rejection/rate-limiting
-    if (code === 1 || code === 403 || code === 5 || code === 429) {
+    // GD Studio API 无 code 字段，直接返回 {url, br, size}；视为成功
+    var gdstudioDirect = (code === undefined && body && typeof body.url === 'string');
+    // Codes that indicate backend rejection/rate-limiting/auth-gating
+    if (!gdstudioDirect && (code === 1 || code === 401 || code === 403 || code === 500 || code === 5 || code === 429)) {
       errors.push({ backend: backendId, error: 'code:' + code, code: code });
       _cacheSet(key, { playable: false }, CACHE_NEGATIVE_TTL);
       _updateBackendStatus(backendId, false, 'code:' + code);
@@ -733,7 +785,10 @@ async function resolveLxMusicUrl(params, opts) {
 
     // --- Extract URL ---
     var resolvedUrl = null;
-    if (code === 200) {
+    if (gdstudioDirect) {
+      // GD Studio: {url, br, size} 无 code 字段
+      resolvedUrl = body.url;
+    } else if (code === 200) {
       // ikun v22: body.url; ikun v515: body.data (if it's a string)
       // ChKSz: body.data.url (nested object)
       resolvedUrl = body.url;
@@ -767,6 +822,35 @@ async function resolveLxMusicUrl(params, opts) {
     // --- Validate URL ---
     var msg = (body && body.msg) || (body && body.message) || '';
     if (!_validateUrl(resolvedUrl, msg)) {
+      // --- GD Studio search+resolve fallback ---
+      // When gdstudio returns empty URL (e.g. QQ songmid on joox source doesn't match),
+      // search for the song by name+artist and resolve with the correct gdstudio ID.
+      if (backend.style === 'gdstudio' && extraParams && extraParams.name) {
+        try {
+          var fallbackResult = await _gdstudioSearchAndResolve(backend, source, finalQuality, extraParams, timeoutMs);
+          if (fallbackResult && fallbackResult.url) {
+            var fallbackCheck = _isTrialUrl(fallbackResult.url);
+            if (fallbackCheck.ok) {
+              var fbResult = {
+                provider: 'lxmusic',
+                source: 'lxmusic',
+                url: fallbackResult.url,
+                playable: true,
+                level: tryQualityKey,
+                quality: finalQuality,
+                backend: backendId + '+search',
+                cacheHit: false,
+              };
+              console.log('[LxMusicResolve] gdstudio search+resolve fallback SUCCESS backend=' + backendId);
+              _cacheSet(key, fbResult, CACHE_POSITIVE_TTL);
+              _updateBackendStatus(backendId, true);
+              return fbResult;
+            }
+          }
+        } catch (fbErr) {
+          console.log('[LxMusicResolve] gdstudio search fallback failed: ' + fbErr.message);
+        }
+      }
       errors.push({ backend: backendId, error: 'url_validation_failed', code: 'INVALID_URL' });
       _cacheSet(key, { playable: false }, CACHE_NEGATIVE_TTL);
       _updateBackendStatus(backendId, false, 'url validation failed');
@@ -803,6 +887,21 @@ async function resolveLxMusicUrl(params, opts) {
   }
   } // end quality fallback loop
 
+  // --- All backends failed: cross-source rescue before giving up ---
+  // Searches kuwo/joox via gdstudio for the same song (strict name+artist
+  // match) and resolves the found ID through any backend supporting it.
+  if (!opts || !opts._noRescue) {
+    try {
+      var rescued = await _crossSourceRescue(source, qualityKey, extraParams, config);
+      if (rescued && rescued.playable) {
+        if (_debugLog) _debugLog('RESOLVE', '跨源救援成功', { from: source, backend: rescued.backend, quality: rescued.quality });
+        return rescued;
+      }
+    } catch (rescueErr) {
+      if (_debugLog) _debugLog('RESOLVE', '跨源救援异常', { error: rescueErr && rescueErr.message });
+    }
+  }
+
   // --- All backends failed ---
   return {
     provider: 'lxmusic',
@@ -810,6 +909,202 @@ async function resolveLxMusicUrl(params, opts) {
     reason: 'all_backends_failed',
     errors: errors,
   };
+}
+
+// ---------- Text Normalization (traditional→simplified for matching) ----------
+
+// Compact traditional→simplified pairs for characters that commonly appear in
+// artist/song names coming from joox/kuwo search results (周杰倫→周杰伦 etc).
+var T2S_MAP = (function () {
+  var pairs = '倫伦 樂乐 葉叶 灣湾 愛爱 聲声 鳳凤 蘭兰 麗丽 儀仪 寶宝 頭头 發发 龍龙 鳥鸟 語语 聽听 寫写 車车 馬马 東东 爾尔 內内 萬万 與与 義义 齊齐 喬乔 傑杰 瑪玛 莉莉 娜娜 絲丝 貝贝 維维 納纳 亞亚 軍军 飛飞 雲云 張张 開开 關关 門门 長长 風风 電电 話话 國国 學学 會会 體体 動动 場场 區区 歷历 歸归 帶带 圖图 團团 燈灯 無无 為为 經经 濟济 運运 記记 認认 識识 辦办 蘇苏 鐵铁 銀银 錢钱 陳陈 孫孙 許许 劉刘 黃黄 楊杨 吳吴 趙赵 声声 绵綿 綵彩 螢萤 憂优 憂忧 樂乐 溫温 滿满 激激 戲戏 護护 衛卫 荣荣 爺爷 嬌娇 緣缘 紅红 网網 络絡 联联 誉誉 缘缘 红红 浪浪 漫漫';
+  var map = {};
+  var arr = pairs.split(/\s+/);
+  for (var i = 0; i < arr.length; i++) {
+    if (arr[i].length === 2) map[arr[i][0]] = arr[i][1];
+  }
+  return map;
+})();
+
+/**
+ * Normalize a name/artist string for fuzzy matching: lowercase, strip spaces
+ * and punctuation, and fold traditional Chinese variants to simplified so
+ * "周杰倫" matches "周杰伦". Only used for comparison — never for display.
+ */
+function _normText(s) {
+  var str = String(s || '').toLowerCase();
+  var out = '';
+  for (var i = 0; i < str.length; i++) {
+    var ch = str[i];
+    if (T2S_MAP[ch] !== undefined) { out += T2S_MAP[ch]; continue; }
+    if (/[\s\-'’·•.,，。()（）\/\\|:：!！?？&]/.test(ch)) continue;
+    out += ch;
+  }
+  return out;
+}
+
+/** True when the two artist strings overlap after normalization. */
+function _artistMatches(targetArtist, itemArtist) {
+  var a = _normText(targetArtist);
+  var b = _normText(itemArtist);
+  if (!a || !b) return false;
+  if (a === b || a.indexOf(b) >= 0 || b.indexOf(a) >= 0) return true;
+  // token overlap: any normalized token of one appears in the other
+  var at = a.split(/[\s,，、&]+/);
+  for (var i = 0; i < at.length; i++) {
+    if (at[i] && b.indexOf(at[i]) >= 0) return true;
+  }
+  return false;
+}
+
+// ---------- GD Studio Search + Resolve Fallback ----------
+
+/**
+ * Map an lx source key to the gdstudio search/url source names that actually
+ * work today (verified 2026-09): gdstudio rejects tencent/kugou/migu and its
+ * joox source has its own ID space, so the search+resolve fallback below is
+ * what makes tx/wy songs resolvable there.
+ */
+function _gdstudioSearchSources(source) {
+  if (source === 'wy') return ['netease'];
+  if (source === 'tx') return ['joox'];
+  if (source === 'kg' || source === 'kw') return ['kuwo'];
+  if (source === 'mg') return ['kuwo'];
+  return [String(source || 'netease')];
+}
+
+/**
+ * Search gdstudio across `searchSources` for a song by name+artist and return
+ * the first STRONG match: exact/normalized name equality AND artist overlap.
+ * Mere name containment (covers, remixes, karaoke versions) is rejected so we
+ * never play the wrong song. Returns { source, id } or null.
+ */
+async function _gdstudioSearch(backend, searchSources, extraParams, timeoutMs) {
+  var base = String(backend.baseUrl).replace(/\/+$/, '');
+  var name = extraParams && extraParams.name || '';
+  var artist = extraParams && extraParams.artist || '';
+  if (!name) return null;
+
+  var targetName = _normText(name);
+  var targetArtist = String(artist || '');
+
+  for (var ssi = 0; ssi < searchSources.length; ssi++) {
+    var searchSource = searchSources[ssi];
+    var query = (name + ' ' + targetArtist).trim();
+    var searchUrl = base + '?types=search&source=' + encodeURIComponent(searchSource) + '&name=' + encodeURIComponent(query) + '&count=8';
+    if (_debugLog) _debugLog('RESOLVE', 'gdstudio 搜索', { source: searchSource, query });
+
+    try {
+      var searchResp = await _electronFetch(searchUrl, { timeout: timeoutMs || 8000 });
+      if (!searchResp.ok) continue;
+      var searchBody = await searchResp.json();
+      if (!Array.isArray(searchBody)) continue;
+
+      for (var si = 0; si < searchBody.length; si++) {
+        var item = searchBody[si];
+        var itemName = _normText(item && item.name);
+        var itemArtist = Array.isArray(item && item.artist) ? item.artist.join(' ') : String((item && item.artist) || '');
+        var nameHit = itemName && (itemName === targetName
+          || (itemName.length > targetName ? itemName.indexOf(targetName) === 0 : targetName.indexOf(itemName) === 0));
+        var artistHit = _artistMatches(targetArtist, itemArtist);
+        // Strong match only: name must match exactly (after normalization) and
+        // the artist must overlap when the result declares an artist.
+        if (nameHit && itemArtist && artistHit) {
+          var matched = { source: searchSource, id: String(item.url_id || item.id || ''), name: item.name };
+          if (_debugLog) _debugLog('RESOLVE', 'gdstudio 搜索强匹配', matched);
+          if (matched.id) return matched;
+        }
+      }
+    } catch (e) {
+      if (_debugLog) _debugLog('RESOLVE', 'gdstudio 搜索失败', { source: searchSource, error: e.message });
+    }
+  }
+  return null;
+}
+
+/**
+ * When a gdstudio direct URL resolve returns an empty URL (VIP song, or a QQ
+ * songmid that does not exist in joox's ID space), search gdstudio for the
+ * song by name+artist and resolve with the correct gdstudio ID.
+ * Returns { url, quality } or null on failure.
+ */
+async function _gdstudioSearchAndResolve(backend, source, quality, extraParams, timeoutMs) {
+  var base = String(backend.baseUrl).replace(/\/+$/, '');
+  var searchSources = _gdstudioSearchSources(source);
+  var best = await _gdstudioSearch(backend, searchSources, extraParams, timeoutMs);
+  if (!best || !best.id) {
+    if (_debugLog) _debugLog('RESOLVE', 'gdstudio 搜索无强匹配', { sources: searchSources });
+    return null;
+  }
+
+  var brMap = { '128k': 128, '320k': 320, 'flac': 740, 'flac24bit': 999 };
+  var br = brMap[quality] || 320;
+  var resolveUrl = base + '?types=url&source=' + encodeURIComponent(best.source) + '&id=' + encodeURIComponent(best.id) + '&br=' + br;
+  if (_debugLog) _debugLog('RESOLVE', 'gdstudio 二次解析', { url: resolveUrl });
+
+  try {
+    var resolveResp = await _electronFetch(resolveUrl, { timeout: timeoutMs || 8000 });
+    if (!resolveResp.ok) return null;
+    var resolveBody = await resolveResp.json();
+    if (resolveBody && resolveBody.url && resolveBody.url.length > 0) {
+      return { url: resolveBody.url, quality: quality };
+    }
+  } catch (e) {
+    console.log('[LxMusicResolve] gdstudio search fallback error: ' + e.message);
+  }
+  return null;
+}
+
+// ---------- Cross-Source Rescue ----------
+
+/**
+ * Last-resort rescue when every backend failed for the song's own source:
+ * search gdstudio on OTHER platforms (kuwo/joox) for the same song, then
+ * resolve the found ID through any configured backend that supports that
+ * platform (gdstudio itself, or xinghai whose kuwo source is verified working).
+ *
+ * Strict matching prevents playing a cover instead of the original.
+ * Returns a playable result object or null.
+ */
+async function _crossSourceRescue(source, quality, extraParams, config) {
+  var name = extraParams && extraParams.name || '';
+  var artist = extraParams && extraParams.artist || '';
+  if (!name || !artist) return null;
+
+  var backends = (config.backends || []).filter(function (b) { return b && b.enabled !== false && b.style === 'gdstudio'; });
+  if (backends.length === 0) return null;
+
+  // Cross sources: kuwo first (has originals and xinghai can resolve it), then joox.
+  var crossSources = ['kuwo', 'joox'];
+  var ownSources = _gdstudioSearchSources(source);
+  crossSources = crossSources.filter(function (s) { return ownSources.indexOf(s) < 0; });
+
+  for (var bi = 0; bi < backends.length; bi++) {
+    var backend = backends[bi];
+    var timeoutMs = Number(backend.timeoutMs) || 8000;
+    var match = await _gdstudioSearch(backend, crossSources, extraParams, timeoutMs);
+    if (!match || !match.id) continue;
+
+    if (_debugLog) _debugLog('RESOLVE', '跨源救援', { from: source, to: match.source, id: match.id, name: match.name });
+    try {
+      var result = await resolveLxMusicUrl({
+        source: match.source,
+        songId: match.id,
+        quality: quality,
+        name: name,
+        artist: artist,
+        songmid: match.id,
+        provider: match.source,
+        duration: extraParams.duration || 0,
+      }, { bypassCache: true, bypassCooldown: true, _noRescue: true });
+      if (result && result.playable) {
+        result.rescuedFrom = source;
+        return result;
+      }
+    } catch (e) {
+      if (_debugLog) _debugLog('RESOLVE', '跨源救援解析失败', { error: e.message });
+    }
+  }
+  return null;
 }
 
 // ---------- Backend Status Tracking ----------

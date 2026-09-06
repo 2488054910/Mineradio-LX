@@ -5333,8 +5333,10 @@ const server = http.createServer(async (req, res) => {
       const duration = Number(url.searchParams.get('duration')) || 0;
       const quality = url.searchParams.get('quality') || 'hires';
       const backend = url.searchParams.get('backend') || '';
+      // 前端重试时带 nocache=1 绕过负缓存（LxFreeFallback 第 2 次尝试）
+      const nocache = url.searchParams.get('nocache') === '1';
 
-      logLxMusic('RESOLVE', '收到解析请求', { provider, id, name, artist, duration, quality, backend, mid, songmid, hash, mixSongId });
+      logLxMusic('RESOLVE', '收到解析请求', { provider, id, name, artist, duration, quality, backend, mid, songmid, hash, mixSongId, nocache });
 
       // Map provider to lxmusic source key
       var lxSource;
@@ -5363,7 +5365,9 @@ const server = http.createServer(async (req, res) => {
           duration: duration,
         };
         if (backend) resolveOpts.backend = backend;
-        result = await lxmusicApi.resolveLxMusicUrl(resolveOpts);
+        // nocache 重试同时绕过缓存与 1.5s 节流窗，否则第二次尝试
+        // 会在 THROTTLE_MIN_GAP_MS 内被全部后端拒绝（throttled:min_gap）
+        result = await lxmusicApi.resolveLxMusicUrl(resolveOpts, { bypassCache: nocache, bypassCooldown: nocache });
         logLxMusic('RESOLVE', '解析结果', { playable: result && result.playable, url: result && result.url ? result.url.substring(0, 120) : 'NONE', backend: result && result.backend, quality: result && result.quality, level: result && result.level, reason: result && result.reason });
       }
 
@@ -5388,7 +5392,7 @@ const server = http.createServer(async (req, res) => {
                   if (srId) {
                     var srSource = provider === 'qishui' ? 'wy' : 'tx';
                     logLxMusic('RESOLVE', '跨平台搜索匹配', { srId, srSource, srName: sr && sr.name });
-                    result = await lxmusicApi.resolveLxMusicUrl({ source: srSource, songId: srId, quality: quality });
+                    result = await lxmusicApi.resolveLxMusicUrl({ source: srSource, songId: srId, quality: quality }, { bypassCache: nocache });
                     if (result && result.playable === true) break;
                   }
                 }
@@ -5418,7 +5422,8 @@ const server = http.createServer(async (req, res) => {
               var qci2 = qqCrossList[qci];
               var qcName = String(qci2 && (qci2.songname || qci2.name) || '').toLowerCase();
               var qcSinger = String(qci2 && qci2.singer && qci2.singer[0] && qci2.singer[0].name || '').toLowerCase();
-              var qcDur = Number(qci2 && qci2.interval) || 0;
+              // QQ 老接口 interval 单位为秒，前端 duration 为毫秒；统一换算为毫秒比较
+              var qcDur = Number(qci2 && qci2.interval) * 1000 || 0;
               var nameHit = qcName === qqCrossName;
               var artistHit = !qqCrossArtist || !qcSinger || qcSinger.indexOf(qqCrossArtist) >= 0 || qqCrossArtist.indexOf(qcSinger) >= 0;
               if (nameHit && artistHit && (!duration || !qcDur || Math.abs(qcDur - duration) < 8000)) {
@@ -5428,7 +5433,7 @@ const server = http.createServer(async (req, res) => {
                   result = await lxmusicApi.resolveLxMusicUrl({
                     source: 'tx', songId: qcId, quality: quality,
                     name: name, artist: artist, duration: duration, songmid: qcId,
-                  }, { bypassCooldown: true });
+                  }, { bypassCooldown: true, bypassCache: nocache });
                   if (result && result.playable === true) break;
                 }
               }

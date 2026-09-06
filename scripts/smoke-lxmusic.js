@@ -77,15 +77,20 @@ function sleep(ms) {
 
   // ---------------------------------------------------------------- T2
   try {
-    const rejected = m._test.validateUrl(
+    // New contract: the URL itself is authoritative. A failure-style msg does
+    // NOT invalidate a non-empty URL (huibq returns real URLs with boilerplate
+    // failure msg); only empty/non-http URLs and error-text-in-url are invalid.
+    const emptyRejected = m._test.validateUrl('', 'ok') === false;
+    const nonHttpRejected = m._test.validateUrl('无法获取播放链接！', '') === false;
+    const msgWithRealUrl = m._test.validateUrl(
       'http://panspace.kuwo.cn/f2afa55a304638d524fe825bf745704a/x/y.mp3',
-      '无法获取播放链接！');
-    const accepted = m._test.validateUrl('https://example.com/a.mp3', 'ok');
-    const pass = rejected === false && accepted === true;
-    record('T2 validateUrl rejects placeholder / accepts clean', pass,
-      pass ? '' : 'reject(placeholder)=' + rejected + ' accept(clean)=' + accepted);
+      '无法获取播放链接！') === true;
+    const cleanAccepted = m._test.validateUrl('https://example.com/a.mp3', 'ok') === true;
+    const pass = emptyRejected && nonHttpRejected && msgWithRealUrl && cleanAccepted;
+    record('T2 validateUrl URL-authoritative contract', pass,
+      pass ? '' : JSON.stringify({ emptyRejected, nonHttpRejected, msgWithRealUrl, cleanAccepted }));
   } catch (e) {
-    record('T2 validateUrl rejects placeholder / accepts clean', false, String((e && e.message) || e));
+    record('T2 validateUrl URL-authoritative contract', false, String((e && e.message) || e));
   }
 
   // ---------------------------------------------------------------- T3
@@ -97,11 +102,15 @@ function sleep(ms) {
     const exhigh = m._test.mapQuality('exhigh', qmap, full);
     const hires = m._test.mapQuality('hires', qmap, full);
     const losslessClamped = m._test.mapQuality('lossless', qmap, clamped);
-    const pass = standard === '128k' && exhigh === '320k' && hires === 'flac24bit' && losslessClamped === '320k';
-    record('T3 quality mapping + clamp', pass,
-      pass ? '' : JSON.stringify({ standard: standard, exhigh: exhigh, hires: hires, losslessClamped: losslessClamped }));
+    // Regression: raw backend-quality keys must map to themselves, not to
+    // qualityMap['hires'] (used to turn the '128k' fallback into flac24bit).
+    const raw128 = m._test.mapQuality('128k', qmap, full);
+    const pass = standard === '128k' && exhigh === '320k' && hires === 'flac24bit'
+      && losslessClamped === '320k' && raw128 === '128k';
+    record('T3 quality mapping + clamp + raw key', pass,
+      pass ? '' : JSON.stringify({ standard: standard, exhigh: exhigh, hires: hires, losslessClamped: losslessClamped, raw128: raw128 }));
   } catch (e) {
-    record('T3 quality mapping + clamp', false, String((e && e.message) || e));
+    record('T3 quality mapping + clamp + raw key', false, String((e && e.message) || e));
   }
 
   // ---------------------------------------------------------------- T4
@@ -214,6 +223,72 @@ function sleep(ms) {
     record('T8 save rejects invalid + restores config', false, String((e && e.message) || e));
   }
 
+  // ---------------------------------------------------------------- T9
+  try {
+    const chkszUrl = m._test.buildBackendUrl(
+      { id: 'chksz', style: 'chksz', baseUrl: 'https://api.chksz.com', key: 'K1' },
+      'tx', '0039MnYb0qxYhV', 'flac', {});
+    const gdTxUrl = m._test.buildBackendUrl(
+      { id: 'gdstudio', style: 'gdstudio', baseUrl: 'https://music-api.gdstudio.xyz/api.php' },
+      'tx', '0039MnYb0qxYhV', 'flac', {});
+    const gdKwUrl = m._test.buildBackendUrl(
+      { id: 'gdstudio', style: 'gdstudio', baseUrl: 'https://music-api.gdstudio.xyz/api.php' },
+      'kuwo', '228908', '128k', {});
+    const pass = chkszUrl === 'https://api.chksz.com/api/qq_music?id=0039MnYb0qxYhV&level=lossless&apikey=K1'
+      && gdTxUrl.indexOf('source=joox&id=0039MnYb0qxYhV&br=740') >= 0
+      && gdKwUrl.indexOf('source=kuwo&id=228908&br=128') >= 0;
+    record('T9 backend URL building (chksz per-source, gdstudio sources)', pass,
+      pass ? '' : JSON.stringify({ chkszUrl, gdTxUrl, gdKwUrl }));
+  } catch (e) {
+    record('T9 backend URL building (chksz per-source, gdstudio sources)', false, String((e && e.message) || e));
+  }
+
+  // ---------------------------------------------------------------- T10
+  try {
+    // Cross-source rescue: every backend fails for wy/186016, gdstudio search
+    // finds the song on kuwo, and xinghai resolves the kuwo id successfully.
+    installFetchMock(function (url) {
+      const s = String(url);
+      if (s.indexOf('yy.zddyr.top') >= 0) {
+        return mockResponse({ code: 200, url: 'http://car-er.kuwo.cn/mock/rescue.mp3' });
+      }
+      if (s.indexOf('types=search&source=kuwo') >= 0) {
+        return mockResponse([{ id: '228908', name: '晴天', artist: ['周杰伦'], url_id: '228908' }]);
+      }
+      if (s.indexOf('types=search') >= 0) return mockResponse([]);
+      if (s.indexOf('/url/') >= 0) return mockResponse({ code: 0, url: '' });
+      return mockResponse({ url: '', br: 0, size: 0 }); // gdstudio empty resolve
+    });
+
+    const r = await m.resolveLxMusicUrl({
+      source: 'wy', songId: '186016', quality: 'exhigh',
+      name: '晴天', artist: '周杰伦', duration: 269000,
+    }, { bypassCache: true });
+    const pass = r.playable === true && r.backend === 'xinghai' && r.rescuedFrom === 'wy';
+    record('T10 cross-source rescue (wy fail -> kuwo search -> xinghai)', pass,
+      pass ? '' : JSON.stringify({ playable: r.playable, backend: r.backend, rescuedFrom: r.rescuedFrom, reason: r.reason, errors: r.errors }));
+  } catch (e) {
+    record('T10 cross-source rescue (wy fail -> kuwo search -> xinghai)', false, String((e && e.message) || e));
+  }
+
+  // ---------------------------------------------------------------- T11
+  try {
+    // nocache-style retry must bypass the 1.5s min-gap throttle so the second
+    // attempt actually reaches the backend instead of failing with THROTTLED.
+    installFetchMock(function () {
+      return mockResponse({ code: 200, url: 'https://example.com/nocache.mp3' });
+    });
+    const params = { source: 'kg', songId: 'XNOCACHE', quality: '320k' };
+    const a = await m.resolveLxMusicUrl(params, { bypassCache: true, bypassCooldown: true });
+    const b = await m.resolveLxMusicUrl(params, { bypassCache: true, bypassCooldown: true });
+    const bThrottled = b.errors && b.errors.some(function (e) { return e.code === 'THROTTLED'; });
+    const pass = a.playable === true && b.playable === true && !bThrottled;
+    record('T11 bypassCooldown retry reaches backend', pass,
+      pass ? '' : JSON.stringify({ a: { playable: a.playable }, b: { playable: b.playable, throttled: bThrottled, errors: b.errors } }));
+  } catch (e) {
+    record('T11 bypassCooldown retry reaches backend', false, String((e && e.message) || e));
+  }
+
   // ------------------------------------------------- LIVE (best-effort)
   // Restore the real fetch and let per-backend throttle windows elapse so
   // the live requests actually hit the network. Max 4 live requests total
@@ -230,8 +305,14 @@ function sleep(ms) {
     }
   }
 
-  await liveResolve('kg', { source: 'kg', songId: '6C5C0DD1B0D1E4A5F4E7D2F76D1E2D3A', quality: 'exhigh' });
-  await liveResolve('wy', { source: 'wy', songId: '186016', quality: '128k' });
+  await liveResolve('wy VIP song (晴天/周杰伦)', {
+    source: 'wy', songId: '186016', quality: 'exhigh',
+    name: '晴天', artist: '周杰伦', duration: 269000,
+  });
+  await liveResolve('tx song (晴天/周杰伦)', {
+    source: 'tx', songId: '0039MnYb0qxYhV', quality: 'exhigh',
+    name: '晴天', artist: '周杰伦', duration: 269000,
+  });
 
   // ---------------------------------------------------------------- result
   const failed = results.some(function (t) { return !t.pass; });

@@ -2,6 +2,21 @@
   "enabled": true,
   "backends": [
     {
+      "id": "gdstudio",
+      "name": "GD Studio 音源",
+      "baseUrl": "https://music-api.gdstudio.xyz/api.php",
+      "style": "gdstudio",
+      "keyHeader": "",
+      "key": "",
+      "timeoutMs": 10000,
+      "qualitys": [
+        "128k",
+        "320k",
+        "flac",
+        "flac24bit"
+      ]
+    },
+    {
       "id": "xinghai",
       "name": "星海音源",
       "baseUrl": "https://yy.zddyr.top",
@@ -19,7 +34,7 @@
     {
       "id": "chksz",
       "name": "ChKSz 音源",
-      "baseUrl": "https://api.chksz.top",
+      "baseUrl": "https://api.chksz.com",
       "style": "chksz",
       "keyHeader": "",
       "key": "",
@@ -57,7 +72,7 @@
         "128k",
         "320k"
       ],
-      "enabled": false
+      "enabled": true
     },
     {
       "id": "yehua",

@@ -52,8 +52,28 @@ Mineradio 新增了一项"免费音源"功能。当一首歌因为 VIP、付费�
 
 ### 默认预置后端
 
-- ikun 音源:https://api.ikunshare.com,query 风格,Header 为 X-Request-Key,公开密钥 public_source,支持 128k、320k、flac、flac24bit
-- Huibq 音源:https://lxmusicapi.onrender.com,path 风格,Header 为 X-Request-Key,公开密钥 share-v3,支持 128k、320k
+- GD Studio 音源：https://music-api.gdstudio.xyz/api.php，gdstudio 风格，支持 128k、320k、flac、flac24bit；直查失败时自动"搜索换 ID"二次解析（严格同名+同歌手匹配，繁简体归一化）
+- 星海音源：https://yy.zddyr.top，xinghai 风格，支持 128k、320k、flac、flac24bit；注意 QQ 源当前仅对星海认证用户开放
+- ChKSz 音源：https://api.chksz.com，chksz 风格，支持 128k、320k、flac、flac24bit；**2026-09 起新域名需要注册 apikey**（在设置中填入密钥即可启用，旧域名 api.chksz.top 已弃用）
+- ikun 音源：https://api.ikunshare.com，query 风格，Header 为 X-Request-Key，公开密钥 public_source，支持 128k、320k
+- Huibq 音源：https://lxmusicapi.onrender.com，path 风格，Header 为 X-Request-Key，公开密钥 share-v3，支持 128k、320k
+
+### 多级解析兜底（v2.1.3 起）
+
+对每一首歌，服务端按以下顺序尝试，直到拿到可播放链接：
+
+1. 按配置顺序对各后端做"平台 ID 直查"
+2. 音质回退：请求音质失败后回退 128k 再试一轮
+3. GD Studio 搜索换 ID：直查为空时按歌名+歌手搜索该平台，严格匹配后用正确的 ID 重新解析
+4. 跨源救援：所有后端在原平台失败后，在酷我/joox 搜索同一首歌（严格同名+同歌手，繁简归一化），换平台解析；绝不播放匹配不严格的翻唱版
+
+### 后端可用性备注（2026-09 实测）
+
+- gdstudio：`source` 仅支持 netease/joox/kuwo/bilibili；tencent/kugou/migu 已被拒绝；网易云 VIP 歌直查返回空 URL，走搜索兜底或跨源救援
+- xinghai：酷我/网易源可用；QQ 源返回 403（仅认证用户）；部分 VIP 歌返回 500
+- chksz：旧域名 api.chksz.top 已停服；新域名 api.chksz.com 需 apikey
+- huibq：可用，注意其返回体 msg 为模板文案、以 url 字段为准
+- ikun：公开接口当前不可达（fetch failed）
 
 ### 音质映射
 
